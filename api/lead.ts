@@ -1,17 +1,34 @@
-export default async function handler(req: any, res: any) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+// api/lead.ts
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Диагностика (без утечки секретов)
+  const diag = {
+    hasBOT_TOKEN: !!process.env.BOT_TOKEN,
+    hasCHAT_ID: !!process.env.CHAT_ID,
+    vercelEnv: process.env.VERCEL_ENV || null,
+    vercelRegion: process.env.VERCEL_REGION || null,
+    vercelUrl: process.env.VERCEL_URL || null,
+  };
+
+  if (req.method !== "POST") {
+    return res.status(200).json({ ok: false, error: "Use POST", diag });
+  }
+
+  if (!process.env.BOT_TOKEN || !process.env.CHAT_ID) {
+    return res.status(200).json({ ok: false, error: "Missing ENV", diag });
+  }
 
   try {
-    const { name, phone, comment, page, hp } = req.body || {};
+    const body = (req.body ?? {}) as any;
+    const name = String(body.name ?? "").trim();
+    const phone = String(body.phone ?? "").trim();
+    const comment = String(body.comment ?? "").trim();
+    const page = String(body.page ?? "").trim();
 
-    // honeypot (если заполнили — молча принимаем, но ничего не делаем)
-    if (hp) return res.status(200).json({ ok: true });
-
-    if (!name || !phone) return res.status(400).json({ ok: false, error: "Missing fields" });
-
-    const BOT_TOKEN = process.env.TG_BOT_TOKEN;
-    const CHAT_ID = process.env.TG_CHAT_ID;
-    if (!BOT_TOKEN || !CHAT_ID) return res.status(500).json({ ok: false, error: "Missing ENV" });
+    if (!name || !phone) {
+      return res.status(400).json({ ok: false, error: "Missing name/phone", diag });
+    }
 
     const text =
       `🧾 Новая заявка\n` +
@@ -21,17 +38,25 @@ export default async function handler(req: any, res: any) {
       `🌐 Страница: ${page || "—"}\n` +
       `🕒 Время: ${new Date().toLocaleString("ru-RU")}`;
 
-    const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    const tgRes = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: CHAT_ID, text }),
+      body: JSON.stringify({ chat_id: process.env.CHAT_ID, text }),
     });
 
-    const tgJson = await tgRes.json();
-    if (!tgJson.ok) return res.status(500).json({ ok: false, error: tgJson.description || "Telegram error" });
+    const tgJson = await tgRes.json().catch(() => ({}));
 
-    return res.status(200).json({ ok: true });
+    if (!tgRes.ok || tgJson?.ok === false) {
+      return res.status(200).json({
+        ok: false,
+        error: "Telegram error",
+        tg: { status: tgRes.status, response: tgJson },
+        diag,
+      });
+    }
+
+    return res.status(200).json({ ok: true, diag });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "Server error" });
+    return res.status(200).json({ ok: false, error: e?.message || "Unknown error", diag });
   }
 }
