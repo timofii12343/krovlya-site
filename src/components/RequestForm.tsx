@@ -36,13 +36,12 @@ const RequestForm = () => {
     const allowed = ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
     if (allowed.includes(e.key)) return;
     if (e.ctrlKey || e.metaKey) return;
-    if (!/^\d$/.test(e.key)) {
-      e.preventDefault();
-    }
+    if (!/^\d$/.test(e.key)) e.preventDefault();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!name.trim() || phone.replace(/\D/g, '').length < 11 || !consent) {
       toast({
         title: 'Заполните все обязательные поля',
@@ -51,14 +50,41 @@ const RequestForm = () => {
       });
       return;
     }
-    toast({
-      title: 'Заявка отправлена!',
-      description: 'Мы свяжемся с вами в ближайшее время.',
-    });
-    setName('');
-    setPhone('+7');
-    setComment('');
-    setConsent(false);
+
+    try {
+      const res = await fetch('/api/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone,
+          comment: comment.trim(),
+          page: window.location.pathname,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data?.ok !== true) {
+        throw new Error(data?.error || 'Не удалось отправить заявку');
+      }
+
+      toast({
+        title: 'Заявка отправлена!',
+        description: 'Мы получили обращение и свяжемся с вами.',
+      });
+
+      setName('');
+      setPhone('+7');
+      setComment('');
+      setConsent(false);
+    } catch (err: any) {
+      toast({
+        title: 'Ошибка отправки',
+        description: err?.message || 'Попробуйте ещё раз через минуту.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
