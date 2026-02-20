@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://autobot.blog/sitemap.xml
